@@ -1,0 +1,19 @@
+## Visual Studio User Settings and Cache
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+
+## Build Outputs
+[Bb]in/
+[Oo]bj/
+
+## BepInEx & Unity Local Test References
+*.dll
+*.pdb
+*.xml
+!nuget.config
+
+## OS Generated Files
+.DS_Store
+Thumbs.db
