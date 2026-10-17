@@ -9,7 +9,10 @@ namespace TrollmateRoleMod
     {
         FakeVent,
         FakeSabotage,
-        ReverseControls
+        ReverseControls,
+        ThrowCake,       // New: Throws a cake directly into a player's face/screen
+        SqueakyShoes,    // New: Makes a player's footsteps play loud squeaking sounds
+        ConfettiBomb     // New: Explodes colorful confetti around a player to startle them
     }
 
     public static class TrollmateRole
@@ -20,9 +23,10 @@ namespace TrollmateRoleMod
         public static float PrankCooldown { get; set; } = 20f;
         public static float CurrentCooldown { get; set; } = 10f;
         public static int PrankScore { get; set; } = 0;
-        public static int RequiredPranksToMaster { get; set; } = 3;
+        public static int RequiredPranksToMaster { get; set; } = 5; // Increased due to more prank choices
 
         public static Dictionary<byte, float> ConfusedPlayers = new Dictionary<byte, float>();
+        public static Dictionary<byte, float> SqueakyPlayers = new Dictionary<byte, float>();
 
         public static bool IsTrollmate(this PlayerControl player)
         {
@@ -52,17 +56,15 @@ namespace TrollmateRoleMod
         {
             if (CurrentCooldown > 0) return;
 
-            switch (prank)
+            byte targetId = target != null ? target.PlayerId : byte.MaxValue;
+            
+            // Syncs the event over the network
+            RpcManager.SendPrankEvent(prank, targetId);
+
+            // Directly triggers local animations that don't need targeted network timing
+            if (prank == PrankType.FakeVent)
             {
-                case PrankType.FakeVent:
-                    TriggerFakeVentAnimation();
-                    break;
-                case PrankType.FakeSabotage:
-                    TriggerFakeSabotage();
-                    break;
-                case PrankType.ReverseControls:
-                    if (target != null) TriggerReverseControls(target);
-                    break;
+                TriggerFakeVentAnimation();
             }
 
             PrankScore++;
@@ -70,12 +72,49 @@ namespace TrollmateRoleMod
             CheckPrankMasterStatus();
         }
 
+        public static void ExecutePrankOnClient(PrankType prank, byte targetId)
+        {
+            var localPlayer = PlayerControl.LocalPlayer;
+            if (localPlayer == null) return;
+
+            switch (prank)
+            {
+                case PrankType.ReverseControls:
+                    if (localPlayer.PlayerId == targetId && !ConfusedPlayers.ContainsKey(targetId))
+                    {
+                        ConfusedPlayers.Add(targetId, 5.0f);
+                    }
+                    break;
+
+                case PrankType.FakeSabotage:
+                    TriggerFakeSabotage();
+                    break;
+
+                case PrankType.ThrowCake:
+                    if (localPlayer.PlayerId == targetId)
+                    {
+                        TriggerCakeSplatterEffect();
+                    }
+                    break;
+
+                case PrankType.SqueakyShoes:
+                    if (!SqueakyPlayers.ContainsKey(targetId))
+                    {
+                        SqueakyPlayers.Add(targetId, 8.0f); // Squeaks last for 8 seconds
+                    }
+                    break;
+
+                case PrankType.ConfettiBomb:
+                    TriggerConfettiExplosion(targetId);
+                    break;
+            }
+        }
+
         private static void TriggerFakeVentAnimation()
         {
             var troll = PlayerControl.LocalPlayer;
             if (troll == null || !troll.IsTrollmate()) return;
 
-            // Finds the closest vent to simulate an opening animation
             Vent closestVent = null;
             float minDst = float.MaxValue;
             foreach (var vent in UnityEngine.Object.FindObjectsOfType<Vent>())
@@ -90,25 +129,39 @@ namespace TrollmateRoleMod
 
             if (closestVent != null)
             {
-                closestVent.Use(); // Triggers the native vent sound and visual animation
+                closestVent.Use();
             }
         }
 
         private static void TriggerFakeSabotage()
         {
-            // Visually simulates a system warning UI pop-up only to create confusion
             if (HudManager.Instance != null)
             {
                 HudManager.Instance.ShowPopUp("WARNING: Critical System Glitch detected by Trollmate!");
             }
         }
 
-        private static void TriggerReverseControls(PlayerControl target)
+        private static void TriggerCakeSplatterEffect()
         {
-            if (target == null) return;
-            if (!ConfusedPlayers.ContainsKey(target.PlayerId))
+            // Covers the victim's UI screen with a messy funny popup
+            if (HudManager.Instance != null)
             {
-                ConfusedPlayers.Add(target.PlayerId, 5.0f); // Reverses directional controls for 5 seconds
+                HudManager.Instance.ShowPopUp("🎂 SPLAT! You got a massive cake thrown right into your face!");
+            }
+        }
+
+        private static void TriggerConfettiExplosion(byte targetId)
+        {
+            PlayerControl victim = null;
+            foreach (var p in PlayerControl.AllPlayerControls)
+            {
+                if (p.PlayerId == targetId) { victim = p; break; }
+            }
+
+            if (victim != null && HudManager.Instance != null)
+            {
+                // Simple visual alert simulating a party explosion near the player
+                HudManager.Instance.ShowPopUp($"🎉 POP! A colorful confetti bomb exploded on {victim.Data.PlayerName}!");
             }
         }
 
