@@ -10,9 +10,9 @@ namespace TrollmateRoleMod
         FakeVent,
         FakeSabotage,
         ReverseControls,
-        ThrowCake,       // New: Throws a cake directly into a player's face/screen
-        SqueakyShoes,    // New: Makes a player's footsteps play loud squeaking sounds
-        ConfettiBomb     // New: Explodes colorful confetti around a player to startle them
+        ThrowCake,       
+        SqueakyShoes,    
+        ConfettiBomb     
     }
 
     public static class TrollmateRole
@@ -23,7 +23,7 @@ namespace TrollmateRoleMod
         public static float PrankCooldown { get; set; } = 20f;
         public static float CurrentCooldown { get; set; } = 10f;
         public static int PrankScore { get; set; } = 0;
-        public static int RequiredPranksToMaster { get; set; } = 5; // Increased due to more prank choices
+        public static int RequiredPranksToMaster { get; set; } = 5; 
 
         public static Dictionary<byte, float> ConfusedPlayers = new Dictionary<byte, float>();
         public static Dictionary<byte, float> SqueakyPlayers = new Dictionary<byte, float>();
@@ -58,10 +58,8 @@ namespace TrollmateRoleMod
 
             byte targetId = target != null ? target.PlayerId : byte.MaxValue;
             
-            // Syncs the event over the network
             RpcManager.SendPrankEvent(prank, targetId);
 
-            // Directly triggers local animations that don't need targeted network timing
             if (prank == PrankType.FakeVent)
             {
                 TriggerFakeVentAnimation();
@@ -100,7 +98,7 @@ namespace TrollmateRoleMod
                 case PrankType.SqueakyShoes:
                     if (!SqueakyPlayers.ContainsKey(targetId))
                     {
-                        SqueakyPlayers.Add(targetId, 8.0f); // Squeaks last for 8 seconds
+                        SqueakyPlayers.Add(targetId, 8.0f); 
                     }
                     break;
 
@@ -143,7 +141,6 @@ namespace TrollmateRoleMod
 
         private static void TriggerCakeSplatterEffect()
         {
-            // Covers the victim's UI screen with a messy funny popup
             if (HudManager.Instance != null)
             {
                 HudManager.Instance.ShowPopUp("🎂 SPLAT! You got a massive cake thrown right into your face!");
@@ -160,7 +157,6 @@ namespace TrollmateRoleMod
 
             if (victim != null && HudManager.Instance != null)
             {
-                // Simple visual alert simulating a party explosion near the player
                 HudManager.Instance.ShowPopUp($"🎉 POP! A colorful confetti bomb exploded on {victim.Data.PlayerName}!");
             }
         }
