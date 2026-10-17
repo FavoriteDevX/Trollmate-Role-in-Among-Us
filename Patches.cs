@@ -1,12 +1,14 @@
 using HarmonyLib;
 using UnityEngine;
 using System;
+using System.Collections.Generic;
 
 namespace TrollmateRoleMod
 {
     [HarmonyPatch]
     public static class Patches
     {
+        // Patch 1: Assigns the role when the game officially starts (Host Only) and syncs it
         [HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SelectRoles))]
         [HarmonyPostfix]
         public static void Postfix_SelectRoles()
@@ -18,6 +20,7 @@ namespace TrollmateRoleMod
             }
         }
 
+        // Patch 2: Intercepts network RPCs to process custom Trollmate packets safely
         [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.HandleRpc))]
         [HarmonyPrefix]
         public static bool Prefix_HandleRpc(byte callId, Hazel.MessageReader reader)
@@ -30,6 +33,48 @@ namespace TrollmateRoleMod
             return true;
         }
 
+        // Patch 3: Custom "Your Role" Intro Screen Animation at the start of the match
+        [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.BeginAlpha))]
+        [HarmonyPostfix]
+        public static void Postfix_IntroCutscene(IntroCutscene __instance)
+        {
+            if (PlayerControl.LocalPlayer == null || !PlayerControl.LocalPlayer.IsTrollmate()) return;
+
+            // Changes the main title text and its color to Cyan
+            __instance.RoleNameText.text = "Trollmate";
+            __instance.RoleNameText.color = new Color(0f, 0.96f, 1f, 1f); // #00F5FF Cyan
+
+            // Changes the subtitle text description with the role's objective
+            __instance.RoleBlurbText.text = "Prank your crewmates and cause absolute harmless chaos!";
+            __instance.RoleBlurbText.color = Color.white;
+
+            // Updates the background color tint of the intro team lineup
+            __instance.BackgroundBar.material.SetColor("_Color", new Color(0f, 0.4f, 0.5f, 1f));
+        }
+
+        // Patch 4: Custom Victory/Defeat Screen Condition for the Trollmate
+        [HarmonyPatch(typeof(EndGameManager), nameof(EndGameManager.Start))]
+        [HarmonyPostfix]
+        public static void Postfix_EndGameScreen(EndGameManager __instance)
+        {
+            if (PlayerControl.LocalPlayer == null || !PlayerControl.LocalPlayer.IsTrollmate()) return;
+
+            // Checks if the Crewmates won and if the Trollmate reached their prank goal
+            bool crewWon = TempData.EndReason == EndGameReason.CrewmatesCompletedTasks || TempData.EndReason == EndGameReason.ImpostorsEjected;
+            bool achievedMasterStatus = TrollmateRole.PrankScore >= TrollmateRole.RequiredPranksToMaster;
+
+            if (crewWon && achievedMasterStatus)
+            {
+                // Overrides the top text to showcase ultimate victory
+                __instance.WinText.text = "Ultimate Prank Victory";
+                __instance.WinText.color = new Color(0f, 0.96f, 1f, 1f);
+                
+                // Displays a unique summary under the player's character model
+                __instance.NavigationText.text = $"You successfully pulled off {TrollmateRole.PrankScore} pranks this match!";
+            }
+        }
+
+        // Patch 5: Modifies the player's name color during gameplay so they know they are the Trollmate
         [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.SetTextName))]
         [HarmonyPostfix]
         public static void Postfix_SetTextName(PlayerControl __instance)
@@ -42,6 +87,7 @@ namespace TrollmateRoleMod
             }
         }
 
+        // Patch 6: Applies the Reverse Controls prank to the affected player's movement physics
         [HarmonyPatch(typeof(KeyboardJoystickMode), nameof(KeyboardJoystickMode.Update))]
         [HarmonyPrefix]
         public static void Prefix_JoystickUpdate(KeyboardJoystickMode __instance)
@@ -65,7 +111,7 @@ namespace TrollmateRoleMod
             }
         }
 
-        // Patch: Intercepts player moving actions to add silly shoe squeaks dynamically
+        // Patch 7: Intercepts player moving actions to add silly shoe squeaks dynamically
         [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.FixedUpdate))]
         [HarmonyPostfix]
         public static void Postfix_PlayerMovement(PlayerControl __instance)
@@ -74,12 +120,10 @@ namespace TrollmateRoleMod
             {
                 TrollmateRole.SqueakyPlayers[__instance.PlayerId] -= Time.fixedDeltaTime;
                 
-                // If player is visibly moving and timer triggers, simulate a squeaking shoe sound effect
                 if (__instance.MyPhysics.Velocity.magnitude > 0.1f && Time.frameCount % 30 == 0)
                 {
                     if (SoundManager.Instance != null)
                     {
-                        // Hijacks standard game audio structure to play standard alert beeps as silly footstep squeaks
                         SoundManager.Instance.PlaySound(SoundManager.Instance.TaskCompleteSound, false, 0.6f);
                     }
                 }
@@ -91,6 +135,7 @@ namespace TrollmateRoleMod
             }
         }
 
+        // Patch 8: Decreases cooldowns and listens for prank keybind inputs every frame
         [HarmonyPatch(typeof(HudManager), nameof(HudManager.Update))]
         [HarmonyPostfix]
         public static void Postfix_HudUpdate()
