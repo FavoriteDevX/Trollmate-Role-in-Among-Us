@@ -7,15 +7,29 @@ namespace TrollmateRoleMod
     [HarmonyPatch]
     public static class Patches
     {
-        // Patch 1: Assigns the role when the game officially starts
         [HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SelectRoles))]
         [HarmonyPostfix]
         public static void Postfix_SelectRoles()
         {
-            TrollmateRole.AssignTrollmate();
+            if (AmongUsClient.Instance.AmHost)
+            {
+                TrollmateRole.AssignTrollmate();
+                RpcManager.SendTrollmateIdentity(TrollmateRole.TrollmatePlayerId);
+            }
         }
 
-        // Patch 2: Modifies the player's name color so they know they are the Trollmate (Cyan)
+        [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.HandleRpc))]
+        [HarmonyPrefix]
+        public static bool Prefix_HandleRpc(byte callId, Hazel.MessageReader reader)
+        {
+            if (callId == 150 || callId == 151)
+            {
+                RpcManager.HandleCustomRpc(callId, reader);
+                return false;
+            }
+            return true;
+        }
+
         [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.SetTextName))]
         [HarmonyPostfix]
         public static void Postfix_SetTextName(PlayerControl __instance)
@@ -28,7 +42,6 @@ namespace TrollmateRoleMod
             }
         }
 
-        // Patch 3: Applies the Reverse Controls prank to the affected player's movement
         [HarmonyPatch(typeof(KeyboardJoystickMode), nameof(KeyboardJoystickMode.Update))]
         [HarmonyPrefix]
         public static void Prefix_JoystickUpdate(KeyboardJoystickMode __instance)
@@ -36,7 +49,6 @@ namespace TrollmateRoleMod
             var localPlayer = PlayerControl.LocalPlayer;
             if (localPlayer == null) return;
 
-            // Updates the control confusion timer
             if (TrollmateRole.ConfusedPlayers.ContainsKey(localPlayer.PlayerId))
             {
                 TrollmateRole.ConfusedPlayers[localPlayer.PlayerId] -= Time.deltaTime;
@@ -46,7 +58,6 @@ namespace TrollmateRoleMod
                     return;
                 }
 
-                // Inverts directional inputs from keyboard or analog stick
                 if (__instance.DynamicStick != null)
                 {
                     __instance.DynamicStick.Value = -__instance.DynamicStick.Value;
@@ -54,7 +65,32 @@ namespace TrollmateRoleMod
             }
         }
 
-        // Patch 4: Decreases cooldowns and listens for prank keybind inputs every frame
+        // Patch: Intercepts player moving actions to add silly shoe squeaks dynamically
+        [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.FixedUpdate))]
+        [HarmonyPostfix]
+        public static void Postfix_PlayerMovement(PlayerControl __instance)
+        {
+            if (TrollmateRole.SqueakyPlayers.ContainsKey(__instance.PlayerId))
+            {
+                TrollmateRole.SqueakyPlayers[__instance.PlayerId] -= Time.fixedDeltaTime;
+                
+                // If player is visibly moving and timer triggers, simulate a squeaking shoe sound effect
+                if (__instance.MyPhysics.Velocity.magnitude > 0.1f && Time.frameCount % 30 == 0)
+                {
+                    if (SoundManager.Instance != null)
+                    {
+                        // Hijacks standard game audio structure to play standard alert beeps as silly footstep squeaks
+                        SoundManager.Instance.PlaySound(SoundManager.Instance.TaskCompleteSound, false, 0.6f);
+                    }
+                }
+
+                if (TrollmateRole.SqueakyPlayers[__instance.PlayerId] <= 0)
+                {
+                    TrollmateRole.SqueakyPlayers.Remove(__instance.PlayerId);
+                }
+            }
+        }
+
         [HarmonyPatch(typeof(HudManager), nameof(HudManager.Update))]
         [HarmonyPostfix]
         public static void Postfix_HudUpdate()
@@ -66,17 +102,15 @@ namespace TrollmateRoleMod
                     TrollmateRole.CurrentCooldown -= Time.deltaTime;
                 }
 
-                // Keypress simulation logic to trigger a test prank (Example: F Key)
+                // Triggers a random prank on the closest player when pressing 'F'
                 if (Input.GetKeyDown(KeyCode.F))
                 {
-                    // Selects a random prank type to deploy
                     var pranks = (PrankType[])Enum.GetValues(typeof(PrankType));
                     var randomPrank = pranks[new System.Random().Next(pranks.Length)];
                     
                     PlayerControl closestTarget = null;
                     float minDst = float.MaxValue;
 
-                    // Finds the closest valid target near the Trollmate
                     foreach (var p in PlayerControl.AllPlayerControls)
                     {
                         if (p.PlayerId == PlayerControl.LocalPlayer.PlayerId || p.Data.IsDead) continue;
